@@ -86,64 +86,162 @@ void updateTemperatures() {
 }
 
 const char index_html[] PROGMEM = R"rawliteral(
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Monitor de Temperatura</title>
-  <style>
-    /* Estilos simplificados sem fontes externas */
-    body {
-      margin: 20px;
-      font-family: Arial, sans-serif;
-      text-align: center;
-    }
-    h2 {
-      color: #059e8a;
-    }
-    .sensor {
-      display: inline-block;
-      margin: 20px;
-      padding: 20px;
-      border: 2px solid #059e8a;
-      border-radius: 10px;
-    }
-  </style>
-</head>
-<body>
-  <h2>Monitor de Temperatura</h2>
+  <!DOCTYPE html>
+  <html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Monitor de Temperatura</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #ecfeff;
+        color: #164e63;
+        padding: 20px;
+        text-align: center;
+        max-width: 800px;
+        margin: 0 auto;
+      }
+      
+      h2 {
+        color: #0891b2;
+        font-size: 2rem;
+        margin-bottom: 1.5rem;
+        position: relative;
+        padding-bottom: 10px;
+      }
+      
+      .sensors-container {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 20px;
+      }
+      
+      .sensor {
+        flex: 1;
+        min-width: 250px;
+        padding: 20px;
+        border-radius: 15px;
+        background: white;
+        box-shadow: 0 5px 15px rgba(6, 182, 212, 0.2);
+        margin-bottom: 20px;
+        position: relative;
+      }
+      
+      h3 {
+        color: #0891b2;
+        font-size: 1.3rem;
+        margin-bottom: 15px;
+      }
+      
+      .temperature {
+        display: flex;
+        justify-content: space-between;
+        margin: 10px 0;
+        padding: 10px;
+        border-radius: 8px;
+        background-color: #f0fdff;
+      }
+      
+      .temperature-value {
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: #0891b2;
+      }
+      
+      .temperature-unit {
+        font-size: 0.9rem;
+        color: #164e63;
+      }
+      
+      .wave {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 8px;
+        background: linear-gradient(to right, #0891b2, #22d3ee, #0891b2);
+        border-radius: 0 0 15px 15px;
+      }
+      
+      @media (max-width: 600px) {
+        .sensors-container {
+          flex-direction: column;
+        }
+        
+        .sensor {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Monitor de Temperatura</h2>
+    
+    <div class="sensors-container">
+      <div class="sensor">
+        <h3>Sensor 1</h3>
+        <div class="temperature">
+          <span>Celsius</span>
+          <div>
+            <span class="temperature-value" id="temp1c">%TEMP1C%</span>
+            <span class="temperature-unit">°C</span>
+          </div>
+        </div>
+        <div class="temperature">
+          <span>Fahrenheit</span>
+          <div>
+            <span class="temperature-value" id="temp1f">%TEMP1F%</span>
+            <span class="temperature-unit">°F</span>
+          </div>
+        </div>
+        <div class="wave"></div>
+      </div>
   
-  <div class="sensor">
-    <h3>Sensor 1</h3>
-    <p>🌡️ <span id="temp1c">%TEMP1C%</span>°C</p>
-    <p>🌡️ <span id="temp1f">%TEMP1F%</span>°F</p>
-  </div>
-
-  <div class="sensor">
-    <h3>Sensor 2</h3>
-    <p>🌡️ <span id="temp2c">%TEMP2C%</span>°C</p>
-    <p>🌡️ <span id="temp2f">%TEMP2F%</span>°F</p>
-  </div>
-
-  <script>
-    // Script de atualização mantido
-    function updateData() {
-      fetch('/data')
-        .then(r => r.json())
-        .then(data => {
-          document.getElementById("temp1c").textContent = data.t1c;
-          document.getElementById("temp1f").textContent = data.t1f;
-          document.getElementById("temp2c").textContent = data.t2c;
-          document.getElementById("temp2f").textContent = data.t2f;
-        });
-    }
-    setInterval(updateData, 10000);
-    updateData();
-  </script>
-</body>
-</html> 
-)rawliteral";  
+      <div class="sensor">
+        <h3>Sensor 2</h3>
+        <div class="temperature">
+          <span>Celsius</span>
+          <div>
+            <span class="temperature-value" id="temp2c">%TEMP2C%</span>
+            <span class="temperature-unit">°C</span>
+          </div>
+        </div>
+        <div class="temperature">
+          <span>Fahrenheit</span>
+          <div>
+            <span class="temperature-value" id="temp2f">%TEMP2F%</span>
+            <span class="temperature-unit">°F</span>
+          </div>
+        </div>
+        <div class="wave"></div>
+      </div>
+    </div>
+  
+    <script>
+      function updateData() {
+        fetch('/data')
+          .then(function(response) {
+            return response.json();
+          })
+          .then(function(data) {
+            document.getElementById("temp1c").textContent = data.t1c;
+            document.getElementById("temp1f").textContent = data.t1f;
+            document.getElementById("temp2c").textContent = data.t2c;
+            document.getElementById("temp2f").textContent = data.t2f;
+          })
+          .catch(function(error) {
+            console.log('Erro ao atualizar dados:', error);
+          });
+      }
+      
+      setInterval(updateData, 10000);
+      updateData();
+    </script>
+  </body>
+  </html>
+  )rawliteral";
 
 // Função para processar as tags no HTML
 String processor(const String& var) {
