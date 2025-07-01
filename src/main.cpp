@@ -8,14 +8,13 @@
 #define PINO_DS18B20 4
 #define pinoPeltier 5
 
-
 // Configurações WiFi
-const char* ssid = "ESP32";
-const char* password = "12345678";
+const char *ssid = "ESP32";
+const char *password = "12345678";
 
 // Configurações de temperatura
 float TEMP_ALVO = 4.0;
-const float TEMP_TOLERANCE = 0.2; 
+const float TEMP_TOLERANCE = 0.2;
 const int MAX_SAIDA_PELTIER = 255;
 const int MIN_SAIDA_PELTIER = 0;
 
@@ -29,10 +28,11 @@ float integral = 0;
 unsigned long tempo_anterior = 0;
 
 // Estados do sistema
-enum EstadoSistema {
-  RESFRIAMENTO_INICIAL,
-  CONTROLE_PID,
-  ESTABILIZADO
+enum EstadoSistema
+{
+	RESFRIAMENTO_INICIAL,
+	CONTROLE_PID,
+	ESTABILIZADO
 };
 
 EstadoSistema estado_atual = RESFRIAMENTO_INICIAL;
@@ -45,7 +45,7 @@ DallasTemperature sensores(&oneWire);
 
 AsyncWebServer server(80);
 
-const char* HTML_PAGE = R"rawliteral(
+const char *HTML_PAGE = R"rawliteral(
 <!DOCTYPE html>
 <html>
 <head>
@@ -402,27 +402,26 @@ const char* HTML_PAGE = R"rawliteral(
 </html>
 )rawliteral";
 
-void setup() {
-  Serial.begin(115200);
-  sensores.begin();
-  
-  pinMode(pinoPeltier, OUTPUT);
-  ledcAttachPin(pinoPeltier, 0);
-  ledcSetup(0, 1000, 8);
-  
-  tempo_anterior = millis();
-  
-  // Conectar WiFi
-  WiFi.softAP(ssid,password);
-  Serial.print("Conectado! IP: ");
-  Serial.println(WiFi.softAPIP());
-  
-  // Configurar rotas do servidor
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send_P(200, "text/html", HTML_PAGE);
-  });
-  
-  server.on("/data", HTTP_GET, [](AsyncWebServerRequest *request){
+void setup()
+{
+	Serial.begin(115200);
+	sensores.begin();
+
+	pinMode(pinoPeltier, OUTPUT);
+	ledcAttachPin(pinoPeltier, 0);
+	ledcSetup(0, 1000, 8);
+
+	tempo_anterior = millis();
+
+	// Conectar WiFi
+	WiFi.softAP(ssid, password);
+
+	// Configurar rotas do servidor
+	server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
+						{ request->send_P(200, "text/html", HTML_PAGE); });
+
+	server.on("/data", HTTP_GET, [](AsyncWebServerRequest *request)
+						{
     StaticJsonDocument<200> doc;
     doc["temperatura"] = temperatura_atual;
     doc["alvo"] = TEMP_ALVO;
@@ -441,32 +440,30 @@ void setup() {
     
     String response;
     serializeJson(doc, response);
-    request->send(200, "application/json", response);
-  });
-  
-  server.on("/setTarget", HTTP_POST, [](AsyncWebServerRequest *request){}, NULL,
-    [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total){
+    request->send(200, "application/json", response); });
+
+	server.on("/setTarget", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total)
+						{
       StaticJsonDocument<100> doc;
       deserializeJson(doc, (const char*)data);
       TEMP_ALVO = doc["target"];
       estado_atual = RESFRIAMENTO_INICIAL; // Reiniciar controle
       integral = 0; // Reset integral
       Serial.println("Nova temperatura alvo: " + String(TEMP_ALVO));
-      request->send(200, "text/plain", "OK");
-    });
-  
-  server.on("/toggle", HTTP_POST, [](AsyncWebServerRequest *request){
+      request->send(200, "text/plain", "OK"); });
+
+	server.on("/toggle", HTTP_POST, [](AsyncWebServerRequest *request)
+						{
     sistema_ligado = !sistema_ligado;
     if (!sistema_ligado) {
       ledcWrite(0, 0);
       saida_pwm_atual = 0;
     }
     Serial.println("Sistema " + String(sistema_ligado ? "LIGADO" : "DESLIGADO"));
-    request->send(200, "text/plain", "OK");
-  });
-  
-  server.on("/setPID", HTTP_POST, [](AsyncWebServerRequest *request){}, NULL,
-    [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total){
+    request->send(200, "text/plain", "OK"); });
+
+	server.on("/setPID", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total)
+						{
       StaticJsonDocument<100> doc;
       deserializeJson(doc, (const char*)data);
       kp = doc["kp"];
@@ -474,108 +471,122 @@ void setup() {
       kd = doc["kd"];
       integral = 0; // Reset integral
       Serial.println("Novos parâmetros PID - Kp: " + String(kp) + " Ki: " + String(ki) + " Kd: " + String(kd));
-      request->send(200, "text/plain", "OK");
-    });
-  
-  server.begin();
-  Serial.println("=== Servidor Web Iniciado ===");
-  Serial.println("Acesse: http://" + WiFi.localIP().toString());
+      request->send(200, "text/plain", "OK"); });
+
+	server.begin();
+	Serial.println("=== Servidor Web Iniciado ===");
+	Serial.println("Acesse: http://" + WiFi.softAPIP().toString());
 }
 
-float calcularPID(float temperatura) {
-  unsigned long tempo_atual = millis();
-  float dt = (tempo_atual - tempo_anterior) / 1000.0;
-  
-  if (dt <= 0) dt = 0.001;
-  
-  float erro = TEMP_ALVO - temperatura;
-  
-  float proporcional = kp * erro;
-  
-  integral += erro * dt;
-  if (integral > 100) integral = 100;
-  if (integral < -100) integral = -100;
-  float integral_termo = ki * integral;
-  
-  float derivativo = kd * (erro - erro_anterior) / dt;
-  
-  float saida = proporcional + integral_termo + derivativo;
-  
-  if (saida > MAX_SAIDA_PELTIER) saida = MAX_SAIDA_PELTIER;
-  if (saida < MIN_SAIDA_PELTIER) saida = MIN_SAIDA_PELTIER;
-  
-  erro_anterior = erro;
-  tempo_anterior = tempo_atual;
-  
-  return saida;
+float calcularPID(float temperatura)
+{
+	unsigned long tempo_atual = millis();
+	float dt = (tempo_atual - tempo_anterior) / 1000.0;
+
+	if (dt <= 0)
+		dt = 0.001;
+
+	float erro = TEMP_ALVO - temperatura;
+
+	float proporcional = kp * erro;
+
+	integral += erro * dt;
+	if (integral > 100)
+		integral = 100;
+	if (integral < -100)
+		integral = -100;
+	float integral_termo = ki * integral;
+
+	float derivativo = kd * (erro - erro_anterior) / dt;
+
+	float saida = proporcional + integral_termo + derivativo;
+
+	if (saida > MAX_SAIDA_PELTIER)
+		saida = MAX_SAIDA_PELTIER;
+	if (saida < MIN_SAIDA_PELTIER)
+		saida = MIN_SAIDA_PELTIER;
+
+	erro_anterior = erro;
+	tempo_anterior = tempo_atual;
+
+	return saida;
 }
 
-void loop() {
-  sensores.requestTemperatures();
-  temperatura_atual = sensores.getTempCByIndex(0);
-  
-  // Verificar sensor
-  if (temperatura_atual == DEVICE_DISCONNECTED_C || temperatura_atual < -50) {
-    Serial.println("ERRO: Sensor desconectado!");
-    ledcWrite(0, 0);
-    saida_pwm_atual = 0;
-    return;
-  }
-  
-  int saidaPeltier = 0;
-  String status = "";
-  
-  if (sistema_ligado) {
-    // Máquina de estados
-    switch (estado_atual) {
-      case RESFRIAMENTO_INICIAL:
-        saidaPeltier = MAX_SAIDA_PELTIER;
-        status = "RESFR. INICIAL";
-        
-        if (temperatura_atual <= TEMP_ALVO + 1.0) {
-          estado_atual = CONTROLE_PID;
-          integral = 0;
-          Serial.println("Mudando para controle PID...");
-        }
-        break;
-        
-      case CONTROLE_PID:
-        saidaPeltier = (int)calcularPID(temperatura_atual);
-        status = "CONTROLE PID";
-        
-        if (abs(temperatura_atual - TEMP_ALVO) <= TEMP_TOLERANCE) {
-          estado_atual = ESTABILIZADO;
-          Serial.println("Temperatura estabilizada!");
-        }
-        break;
-        
-      case ESTABILIZADO:
-        saidaPeltier = (int)calcularPID(temperatura_atual);
-        status = "ESTABILIZADO";
-        
-        if (abs(temperatura_atual - TEMP_ALVO) > TEMP_TOLERANCE * 2) {
-          estado_atual = CONTROLE_PID;
-          Serial.println("Saiu da tolerância, ajustando...");
-        }
-        break;
-    }
-  } else {
-    status = "DESLIGADO";
-    saidaPeltier = 0;
-  }
-  
-  saida_pwm_atual = saidaPeltier;
-  ledcWrite(0, saidaPeltier);
-  
-  // Log no Serial Monitor
-  Serial.print("Temp: ");
-  Serial.print(temperatura_atual, 2);
-  Serial.print("°C | Alvo: ");
-  Serial.print(TEMP_ALVO);
-  Serial.print("°C | PWM: ");
-  Serial.print(saidaPeltier);
-  Serial.print(" | Status: ");
-  Serial.println(status);
-  
-  delay(500);
+void loop()
+{
+	sensores.requestTemperatures();
+	temperatura_atual = sensores.getTempCByIndex(0);
+
+	// Verificar sensor
+	if (temperatura_atual == DEVICE_DISCONNECTED_C || temperatura_atual < -50)
+	{
+		Serial.println("ERRO: Sensor desconectado!");
+		ledcWrite(0, 0);
+		saida_pwm_atual = 0;
+		return;
+	}
+
+	int saidaPeltier = 0;
+	String status = "";
+
+	if (sistema_ligado)
+	{
+		// Máquina de estados
+		switch (estado_atual)
+		{
+		case RESFRIAMENTO_INICIAL:
+			saidaPeltier = MAX_SAIDA_PELTIER;
+			status = "RESFR. INICIAL";
+
+			if (temperatura_atual <= TEMP_ALVO + 1.0)
+			{
+				estado_atual = CONTROLE_PID;
+				integral = 0;
+				Serial.println("Mudando para controle PID...");
+			}
+			break;
+
+		case CONTROLE_PID:
+			saidaPeltier = (int)calcularPID(temperatura_atual);
+			status = "CONTROLE PID";
+
+			if (abs(temperatura_atual - TEMP_ALVO) <= TEMP_TOLERANCE)
+			{
+				estado_atual = ESTABILIZADO;
+				Serial.println("Temperatura estabilizada!");
+			}
+			break;
+
+		case ESTABILIZADO:
+			saidaPeltier = (int)calcularPID(temperatura_atual);
+			status = "ESTABILIZADO";
+
+			if (abs(temperatura_atual - TEMP_ALVO) > TEMP_TOLERANCE * 2)
+			{
+				estado_atual = CONTROLE_PID;
+				Serial.println("Saiu da tolerância, ajustando...");
+			}
+			break;
+		}
+	}
+	else
+	{
+		status = "DESLIGADO";
+		saidaPeltier = 0;
+	}
+
+	saida_pwm_atual = saidaPeltier;
+	ledcWrite(0, saidaPeltier);
+
+	// Log no Serial Monitor
+	Serial.print("Temp: ");
+	Serial.print(temperatura_atual, 2);
+	Serial.print("°C | Alvo: ");
+	Serial.print(TEMP_ALVO);
+	Serial.print("°C | PWM: ");
+	Serial.print(saidaPeltier);
+	Serial.print(" | Status: ");
+	Serial.println(status);
+
+	delay(500);
 }
