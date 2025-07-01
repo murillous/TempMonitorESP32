@@ -4,16 +4,18 @@
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 
-// Configurações WiFi
-const char* ssid = "BARRETO_2.4G";
-const char* password = "isabelle07";
-
+// Configuração dos pinos
 #define PINO_DS18B20 4
 #define pinoPeltier 5
 
+
+// Configurações WiFi
+const char* ssid = "ESP32";
+const char* password = "12345678";
+
 // Configurações de temperatura
-float TEMP_ALVO = 4.0;  // 4°C target (agora variável)
-const float TEMP_TOLERANCE = 0.2;  // Tolerância de mais ou menos 0.2°C
+float TEMP_ALVO = 4.0;
+const float TEMP_TOLERANCE = 0.2; 
 const int MAX_SAIDA_PELTIER = 255;
 const int MIN_SAIDA_PELTIER = 0;
 
@@ -411,15 +413,9 @@ void setup() {
   tempo_anterior = millis();
   
   // Conectar WiFi
-  WiFi.begin(ssid, password);
-  Serial.print("Conectando ao WiFi");
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.print(".");
-  }
-  Serial.println();
+  WiFi.softAP(ssid,password);
   Serial.print("Conectado! IP: ");
-  Serial.println(WiFi.localIP());
+  Serial.println(WiFi.softAPIP());
   
   // Configurar rotas do servidor
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
