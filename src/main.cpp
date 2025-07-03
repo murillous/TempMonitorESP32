@@ -408,8 +408,8 @@ void setup()
 	sensores.begin();
 
 	pinMode(pinoPeltier, OUTPUT);
-	ledcAttachPin(pinoPeltier, 0);
 	ledcSetup(0, 1000, 8);
+	ledcAttachPin(pinoPeltier, 0);
 
 	tempo_anterior = millis();
 
@@ -442,7 +442,8 @@ void setup()
     serializeJson(doc, response);
     request->send(200, "application/json", response); });
 
-	server.on("/setTarget", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total)
+	server.on("/setTarget", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL, [](AsyncWebServerRequest *request,
+            uint8_t *data, size_t len, size_t index, size_t total)
 						{
       StaticJsonDocument<100> doc;
       deserializeJson(doc, (const char*)data);
