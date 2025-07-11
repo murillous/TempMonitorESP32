@@ -19,13 +19,18 @@ const int MAX_SAIDA_PELTIER = 255;
 const int MIN_SAIDA_PELTIER = 0;
 
 // Controle PID
-float kp = 100.0;
-float ki = 0.5;
-float kd = 50.0;
+float kp = 30.0;
+float ki = 0.1;   
+float kd = 10.0;  
 
 float erro_anterior = 0;
 float integral = 0;
 unsigned long tempo_anterior = 0;
+
+// Variáveis para controle de tempo não bloqueante
+const unsigned long INTERVALO_LEITURA = 500; 
+unsigned long tempoUltimaLeitura = 0;
+float temperatura_anterior = 0;
 
 // Estados do sistema
 enum EstadoSistema
@@ -36,7 +41,7 @@ enum EstadoSistema
 };
 
 EstadoSistema estado_atual = RESFRIAMENTO_INICIAL;
-bool sistema_ligado = true;
+bool sistema_ligado = false;
 float temperatura_atual = 0;
 int saida_pwm_atual = 0;
 
@@ -265,7 +270,7 @@ const char *HTML_PAGE = R"rawliteral(
     <div class="container">
         <div class="header">
             <h1>🧊 Controle Peltier</h1>
-            <p>Sistema de Controle de Temperatura 4°C</p>
+            <p>Sistema de Controle de Temperatura</p>
         </div>
         
         <div class="dashboard">
@@ -321,15 +326,15 @@ const char *HTML_PAGE = R"rawliteral(
                 <h3>🔧 Parâmetros PID</h3>
                 <div class="control-group">
                     <label for="kpValue">Kp (Proporcional):</label>
-                    <input type="number" id="kpValue" value="100.0" step="0.1">
+                    <input type="number" id="kpValue" value="30.0" step="0.1">
                 </div>
                 <div class="control-group">
                     <label for="kiValue">Ki (Integral):</label>
-                    <input type="number" id="kiValue" value="0.5" step="0.1">
+                    <input type="number" id="kiValue" value="0.1" step="0.1">
                 </div>
                 <div class="control-group">
                     <label for="kdValue">Kd (Derivativo):</label>
-                    <input type="number" id="kdValue" value="50.0" step="0.1">
+                    <input type="number" id="kdValue" value="10.0" step="0.1">
                 </div>
                 <button class="btn" onclick="setPID()">Atualizar PID</button>
             </div>
@@ -407,6 +412,10 @@ void setup()
 	Serial.begin(115200);
 	sensores.begin();
 
+    sensores.setWaitForConversion(false); 
+    sensores.requestTemperatures(); 
+    tempoUltimaLeitura = millis(); 
+
 	pinMode(pinoPeltier, OUTPUT);
 	ledcSetup(0, 1000, 8);
 	ledcAttachPin(pinoPeltier, 0);
@@ -481,113 +490,136 @@ void setup()
 
 float calcularPID(float temperatura)
 {
-	unsigned long tempo_atual = millis();
-	float dt = (tempo_atual - tempo_anterior) / 1000.0;
+    unsigned long tempo_atual = millis();
+    float dt = (tempo_atual - tempo_anterior) / 1000.0;
 
-	if (dt <= 0)
-		dt = 0.001;
+    if (dt <= 0)
+        dt = 0.001; // Evita divisão por zero
 
-	float erro = TEMP_ALVO - temperatura;
+    float erro = TEMP_ALVO - temperatura;
 
-	float proporcional = kp * erro;
+    float proporcional = kp * erro;
 
-	integral += erro * dt;
-	if (integral > 100)
-		integral = 100;
-	if (integral < -100)
-		integral = -100;
-	float integral_termo = ki * integral;
+    // Calculado sobre a variação da temperatura (medição), não do erro.
+    // Isso evita o "chute derivativo" quando o setpoint muda.
+    float derivativo = kd * (temperatura_anterior - temperatura) / dt;
 
-	float derivativo = kd * (erro - erro_anterior) / dt;
 
-	float saida = proporcional + integral_termo + derivativo;
+    // A lógica de anti-windup é aplicada antes de atualizar o integral.
+    float saida_pre_saturacao = proporcional + (ki * integral) + derivativo;
 
-	if (saida > MAX_SAIDA_PELTIER)
-		saida = MAX_SAIDA_PELTIER;
-	if (saida < MIN_SAIDA_PELTIER)
-		saida = MIN_SAIDA_PELTIER;
+    // Anti-Windup (Integração Condicional):
+    // Só acumula o erro no termo integral se a saída do controlador
+    // NÃO estiver saturada. Isso impede que o integral cresça
+    // indefinidamente quando o atuador já está no seu limite.
+    if (saida_pre_saturacao < MAX_SAIDA_PELTIER && saida_pre_saturacao > MIN_SAIDA_PELTIER)
+    {
+        integral += erro * dt;
+    }
+    
+    float integral_termo = ki * integral;
 
-	erro_anterior = erro;
-	tempo_anterior = tempo_atual;
+    float saida = proporcional + integral_termo + derivativo;
 
-	return saida;
+    // Saturação (Clamping) da saída final
+    if (saida > MAX_SAIDA_PELTIER)
+        saida = MAX_SAIDA_PELTIER;
+    if (saida < MIN_SAIDA_PELTIER)
+        saida = MIN_SAIDA_PELTIER;
+
+    tempo_anterior = tempo_atual;
+
+    return saida;
 }
 
 void loop()
 {
-	sensores.requestTemperatures();
-	temperatura_atual = sensores.getTempCByIndex(0);
+    unsigned long tempoAtual = millis();
 
-	// Verificar sensor
-	if (temperatura_atual == DEVICE_DISCONNECTED_C || temperatura_atual < -50)
-	{
-		Serial.println("ERRO: Sensor desconectado!");
-		ledcWrite(0, 0);
-		saida_pwm_atual = 0;
-		return;
-	}
+    // Executa o bloco de controle em intervalos fixos definidos por INTERVALO_LEITURA
+    if (tempoAtual - tempoUltimaLeitura >= INTERVALO_LEITURA)
+    {
+        tempoUltimaLeitura = tempoAtual; 
 
-	int saidaPeltier = 0;
-	String status = "";
+        temperatura_atual = sensores.getTempCByIndex(0);
+        
+        sensores.requestTemperatures(); 
 
-	if (sistema_ligado)
-	{
-		// Máquina de estados
-		switch (estado_atual)
-		{
-		case RESFRIAMENTO_INICIAL:
-			saidaPeltier = MAX_SAIDA_PELTIER;
-			status = "RESFR. INICIAL";
+        // Verificar sensor
+        if (temperatura_atual == DEVICE_DISCONNECTED_C || temperatura_atual < -50)
+        {
+            Serial.println("ERRO: Sensor desconectado!");
+            ledcWrite(0, 0);
+            saida_pwm_atual = 0;
+            temperatura_anterior = 0; 
+            erro_anterior = 0;
+            return; 
+        }
 
-			if (temperatura_atual <= TEMP_ALVO + 1.0)
-			{
-				estado_atual = CONTROLE_PID;
-				integral = 0;
-				Serial.println("Mudando para controle PID...");
-			}
-			break;
+        int saidaPeltier = 0;
+        String status = "";
 
-		case CONTROLE_PID:
-			saidaPeltier = (int)calcularPID(temperatura_atual);
-			status = "CONTROLE PID";
+        if (sistema_ligado)
+        {
+           
+            switch (estado_atual)
+            {
+            case RESFRIAMENTO_INICIAL:
+                saidaPeltier = MAX_SAIDA_PELTIER;
+                status = "RESFR. INICIAL";
 
-			if (abs(temperatura_atual - TEMP_ALVO) <= TEMP_TOLERANCE)
-			{
-				estado_atual = ESTABILIZADO;
-				Serial.println("Temperatura estabilizada!");
-			}
-			break;
+                if (temperatura_atual <= TEMP_ALVO + 1.0)
+                {
+                    estado_atual = CONTROLE_PID;
+                    integral = 0;
+                    Serial.println("Mudando para controle PID...");
+                }
+                break;
 
-		case ESTABILIZADO:
-			saidaPeltier = (int)calcularPID(temperatura_atual);
-			status = "ESTABILIZADO";
+            case CONTROLE_PID:
+                saidaPeltier = (int)calcularPID(temperatura_atual);
+                status = "CONTROLE PID";
 
-			if (abs(temperatura_atual - TEMP_ALVO) > TEMP_TOLERANCE * 2)
-			{
-				estado_atual = CONTROLE_PID;
-				Serial.println("Saiu da tolerância, ajustando...");
-			}
-			break;
-		}
-	}
-	else
-	{
-		status = "DESLIGADO";
-		saidaPeltier = 0;
-	}
+                if (abs(temperatura_atual - TEMP_ALVO) <= TEMP_TOLERANCE)
+                {
+                    estado_atual = ESTABILIZADO;
+                    Serial.println("Temperatura estabilizada!");
+                }
+                break;
 
-	saida_pwm_atual = saidaPeltier;
-	ledcWrite(0, saidaPeltier);
+            case ESTABILIZADO:
+                saidaPeltier = (int)calcularPID(temperatura_atual);
+                status = "ESTABILIZADO";
 
-	// Log no Serial Monitor
-	Serial.print("Temp: ");
-	Serial.print(temperatura_atual, 2);
-	Serial.print("°C | Alvo: ");
-	Serial.print(TEMP_ALVO);
-	Serial.print("°C | PWM: ");
-	Serial.print(saidaPeltier);
-	Serial.print(" | Status: ");
-	Serial.println(status);
+                if (abs(temperatura_atual - TEMP_ALVO) > TEMP_TOLERANCE * 2)
+                {
+                    estado_atual = CONTROLE_PID;
+                    Serial.println("Saiu da tolerância, ajustando...");
+                }
+                break;
+            }
+        }
+        else
+        {
+            status = "DESLIGADO";
+            saidaPeltier = 0;
+        }
 
-	delay(500);
+        saida_pwm_atual = saidaPeltier;
+        ledcWrite(0, saidaPeltier);
+
+        erro_anterior = TEMP_ALVO - temperatura_atual;
+        temperatura_anterior = temperatura_atual;
+
+        // Log no Serial Monitor
+        Serial.print("Temp: ");
+        Serial.print(temperatura_atual, 2);
+        Serial.print("°C | Alvo: ");
+        Serial.print(TEMP_ALVO);
+        Serial.print("°C | PWM: ");
+        Serial.print(saidaPeltier);
+        Serial.print(" | Status: ");
+        Serial.println(status);
+    }
+
 }
