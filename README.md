@@ -116,4 +116,11 @@ Este projeto foi realizado com o apoio da **Universidade Estadual do Maranhão (
 
 ## 📄 Licença
 
-Este projeto está sob a licença MIT. Veja o arquivo LICENSE para mais detalhes.
+Este projeto está licenciado sob a Licença MIT - veja o arquivo [LICENSE](LICENSE) para detalhes.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+
+## 📞 Contato
+
+*[Adicione informações de contato se necessário]*
