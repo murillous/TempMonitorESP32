@@ -1,175 +1,119 @@
-# 🧊 Sistema de Controle de Temperatura com Célula Peltier - ESP32
+# TempMonitorESP32: Controle Termoelétrico para Biopreservação
 
-## Descrição
+Este repositório contém o firmware e a documentação do projeto **"Desenvolvimento de um Dispositivo Usando Placas Termoelétricas para a Preservação de Sêmen de Peixes"**. O projeto foi desenvolvido no âmbito do Programa Institucional de Bolsas de Iniciação Científica (PIBIC) da Universidade Estadual do Maranhão (UEMA).
 
-Este projeto implementa um sistema de controle de temperatura utilizando ESP32, sensor DS18B20 e célula Peltier com controle PID avançado. O sistema mantém a temperatura alvo de 4°C (configurável) com precisão e oferece uma interface web moderna e responsiva para monitoramento e controle.
+O objetivo é apresentar uma solução de baixo custo e alta precisão para o controle de temperatura em aplicações de biopreservação, utilizando um microcontrolador ESP32 para controlar um sistema de refrigeração baseado em pastilhas Peltier.
 
-## 🚀 Características
+## 📋 Contexto
 
-- **Controle PID Otimizado**: Implementação com anti-windup para evitar saturação do termo integral
-- **Interface Web Moderna**: Dashboard responsivo com atualização em tempo real
-- **Três Estados de Operação**:
-  - Resfriamento Inicial (PWM máximo)
-  - Controle PID (ajuste fino)
-  - Estabilizado (manutenção da temperatura)
-- **Configuração Remota**: Ajuste de temperatura alvo e parâmetros PID via web
-- **Monitoramento Visual**: Indicadores de status, gráficos de progresso e métricas em tempo real
-- **Anti-Windup Inteligente**: Previne acúmulo excessivo do termo integral
-- **Controle não-bloqueante**: Loop principal otimizado para responsividade
+A preservação de material genético, como o sêmen de peixes, é um desafio crucial para a sustentabilidade e o avanço da aquicultura. A manutenção de uma temperatura estável e controlada é um dos fatores mais críticos para garantir a viabilidade celular. Este projeto surge como uma solução tecnológica que une engenharia de computação, automação e biotecnologia para enfrentar esse desafio.
 
-## 🛠️ Hardware Necessário
+## 🚀 Funcionalidades
 
-- **ESP32** (qualquer modelo)
-- **Sensor DS18B20** (sensor de temperatura à prova d'água recomendado)
-- **Célula Peltier** (TEC1-12706 ou similar)
-- **Driver para Peltier** (módulo com MOSFET ou ponte H)
-- **Resistor de pull-up** 4.7kΩ para o sensor DS18B20
-- **Fonte de alimentação** adequada para a célula Peltier
+O firmware implementado oferece um sistema de controle robusto e de fácil utilização:
 
-## 🔌 Conexões
+### Controle Avançado de Temperatura
+- **Controle PID**: Utiliza um algoritmo Proporcional, Integral e Derivativo para manter a temperatura com alta precisão, evitando oscilações bruscas
+- **Anti-Windup**: Lógica implementada para prevenir a saturação do termo integral, garantindo estabilidade
+- **Derivativo sobre Medição**: Evita "chutes derivativos" ao alterar o setpoint, resultando em uma operação mais suave
 
-```
-ESP32          |  Componente
----------------|------------------
-GPIO 4         |  DS18B20 (Data)
-GPIO 5         |  Driver Peltier (PWM)
-3.3V          |  DS18B20 (VCC)
-GND           |  DS18B20 (GND)
-VIN/5V        |  Driver Peltier (VCC)
-GND           |  Driver Peltier (GND)
-```
+### Interface Web Responsiva
+- O ESP32 cria um ponto de acesso Wi-Fi e hospeda uma página web para monitoramento e controle total do sistema
 
-**Importante**: Conecte um resistor de pull-up de 4.7kΩ entre o pino de dados do DS18B20 (GPIO 4) e VCC (3.3V).
+### Controle Remoto Completo
+Através da interface é possível:
+- Ligar e desligar o sistema
+- Ajustar a temperatura alvo em tempo real
+- Visualizar a temperatura atual, o erro e a potência (PWM) aplicada
+- Ajustar as constantes do PID (Kp, Ki, Kd) para sintonia fina
 
-## 📦 Dependências
+### Sistema Inteligente
+- **Máquina de Estados**: O sistema opera em três estágios para maior eficiência: 
+  - `RESFRIAMENTO_INICIAL`
+  - `CONTROLE_PID` 
+  - `ESTABILIZADO`
+- **Operação Stand-Alone**: Não necessita de um computador conectado após a programação, funcionando de forma autônoma
 
-O projeto utiliza as seguintes bibliotecas (instaladas via PlatformIO):
+## 🛠️ Hardware Utilizado
 
-- `OneWire` - Comunicação com sensor DS18B20
-- `DallasTemperature` - Interface simplificada para DS18B20
-- `WiFi` - Conectividade WiFi (ESP32 core)
-- `ESPAsyncWebServer` - Servidor web assíncrono
-- `ArduinoJson` - Manipulação de dados JSON
+| Componente | Quantidade | Descrição |
+|------------|------------|-----------|
+| Microcontrolador | 1 | ESP32 DevKitC |
+| Sensor de Temperatura | 1 | DS18B20 (à prova d'água) |
+| Módulos Peltier | 4 | TEC1-12706 |
+| Atuador de Potência | 1 | MOSFET Canal-N (ex: 2SK1388) |
+| Fonte de Alimentação | 1 | 12V / 50A |
+| Dissipador de Calor | 1 | Dissipador de CPU de alta performance |
+| Ventoinha | 1 | 20 cm de diâmetro, 12V |
 
-## 🔧 Instalação e Configuração
+## 📦 Software e Dependências
 
-### Pré-requisitos
-- [PlatformIO](https://platformio.org/) instalado no VS Code ou como CLI
-- ESP32 configurado no PlatformIO
+O projeto foi desenvolvido em C++ utilizando o framework Arduino (recomenda-se o uso do Visual Studio Code com a extensão PlatformIO).
 
-### Configuração do Projeto
+### Bibliotecas Necessárias:
+- `OneWire`
+- `DallasTemperature`
+- `WiFi`
+- `ESPAsyncWebServer`
+- `ArduinoJson`
 
-1. **Clone ou baixe o projeto**
-2. **Abra no PlatformIO** (VS Code + extensão PlatformIO)
-3. **Configure o arquivo `platformio.ini`**:
+### Configuração PlatformIO
+
+Se estiver usando PlatformIO, adicione as seguintes linhas ao seu arquivo `platformio.ini`:
 
 ```ini
-[env:esp32dev]
-platform = espressif32
-board = esp32dev
-framework = arduino
-lib_deps = 
-    oneWire
-    milesburton/DallasTemperature@^3.9.1
-    me-no-dev/ESPAsyncWebServer@^1.2.3
-    bblanchon/ArduinoJson@^6.21.3
-monitor_speed = 115200
+lib_deps =
+    paulstoffregen/OneWire
+    milesburton/DallasTemperature
+    esphome/ESPAsyncWebServer-esphome
+    bblanchon/ArduinoJson
 ```
 
-4. **Ajuste as configurações no código** (se necessário):
-```cpp
-// Configurações WiFi
-const char *ssid = "ESP32";           // Nome da rede WiFi
-const char *password = "12345678";    // Senha da rede WiFi
+## ⚙️ Instalação e Uso
 
-// Configurações de temperatura
-float TEMP_ALVO = 4.0;               // Temperatura alvo inicial
-const float TEMP_TOLERANCE = 0.2;    // Tolerância para estabilização
+### 1. Clone o repositório:
 
-// Parâmetros PID iniciais
-float kp = 30.0;  // Ganho proporcional
-float ki = 0.1;   // Ganho integral
-float kd = 10.0;  // Ganho derivativo
+```bash
+git clone https://github.com/murillous/TempMonitorESP32.git
+cd TempMonitorESP32
 ```
 
-### Compilação e Upload
+### 2. Montagem do Hardware:
 
-1. **Compile o projeto**: `Ctrl+Alt+B` no VS Code ou `pio run`
-2. **Faça o upload**: `Ctrl+Alt+U` no VS Code ou `pio run --target upload`
-3. **Monitor serial**: `Ctrl+Alt+S` no VS Code ou `pio device monitor`
+1. Conecte o pino de dados do sensor DS18B20 ao **GPIO 4** do ESP32 (use um resistor de pull-up de 4.7kΩ entre o pino de dados e o 3.3V)
+2. Conecte o **GPIO 5** do ESP32 ao pino Gate do MOSFET
+3. Conecte o pino Source do MOSFET ao terminal negativo (GND) da fonte de 12V
+4. Conecte o pino Drain do MOSFET ao fio negativo das pastilhas Peltier
+5. Conecte o fio positivo das pastilhas Peltier ao terminal positivo (+12V) da fonte
+6. Alimente o ESP32 via USB ou com uma fonte de 5V
 
-## 🌐 Acesso à Interface Web
+### 3. Upload do Firmware:
 
-1. Após o upload, abra o **Monitor Serial** (115200 baud)
-2. Anote o **IP do Access Point** (geralmente 192.168.4.1)
-3. Conecte seu dispositivo à rede WiFi "ESP32" (senha: 12345678)
-4. Acesse o IP no navegador
+1. Abra o projeto no VS Code (com PlatformIO) ou na Arduino IDE
+2. Compile e envie o código para a sua placa ESP32
 
-### Funcionalidades da Interface
+### 4. Operação:
 
-- **Dashboard Principal**: Temperatura atual, alvo, erro e status do sistema
-- **Controle de PWM**: Visualização da potência aplicada na Peltier
-- **Configurações**: Ajuste de temperatura alvo e parâmetros PID
-- **Status Visual**: Indicadores coloridos para diferentes estados
-- **Responsivo**: Interface adaptada para desktop e mobile
+1. Após a inicialização, o ESP32 criará uma rede Wi-Fi:
+   - **SSID**: `ESP32`
+   - **Senha**: `12345678`
+2. Conecte seu celular ou computador a esta rede
+3. Abra um navegador e acesse o endereço: **http://192.168.4.1**
+4. Você terá acesso à interface de controle para operar o dispositivo
 
-## ⚙️ Configuração dos Parâmetros
+## 📊 Interface Web
 
-### Parâmetros PID
+A interface web é o principal meio de interação com o dispositivo, permitindo controle total sobre seu funcionamento.
 
-- **Kp (Proporcional)**: Controla a resposta imediata ao erro (padrão: 30.0)
-- **Ki (Integral)**: Elimina erro em regime permanente (padrão: 0.1)
-- **Kd (Derivativo)**: Amortece oscilações (padrão: 10.0)
+## ✒️ Autores e Agradecimentos
 
-### Ajuste Fino
+- **Autor**: Sérgio Murilo de Andrade Castelhano Filho ([@murillous](https://github.com/murillous))
+- **Orientador**: Prof. Carlos Riedel Porto Carreiro
 
-Para otimizar o controle para seu sistema específico:
+Este projeto foi realizado com o apoio da **Universidade Estadual do Maranhão (UEMA)** e do **Programa Institucional de Bolsas de Iniciação Científica (PIBIC)**.
 
-1. **Comece com Kp**: Aumente até obter resposta rápida sem oscilação excessiva
-2. **Ajuste Ki**: Adicione para eliminar erro residual (valores baixos)
-3. **Configure Kd**: Use para reduzir overshoot e oscilações
+---
 
-## 📊 Estados do Sistema
+## 📄 Licença
 
-- **RESFRIAMENTO_INICIAL**: PWM máximo até se aproximar do alvo
-- **CONTROLE_PID**: Controle fino com algoritmo PID
-- **ESTABILIZADO**: Temperatura dentro da tolerância, manutenção ativa
-
-## 🔍 Monitoramento e Debug
-
-O sistema fornece logs detalhados via Serial Monitor:
-
-```
-Temp: 4.12°C | Alvo: 4.00°C | PWM: 125 | Status: ESTABILIZADO
-```
-
-## 🚨 Características de Segurança
-
-- **Detecção de sensor desconectado**: Para o sistema em caso de falha
-- **Anti-windup**: Previne saturação do controlador
-- **Limites de PWM**: Proteção contra valores inválidos
-- **Tolerância configurável**: Evita oscilações desnecessárias
-
-## 🔧 Troubleshooting
-
-### Problemas Comuns
-
-1. **Sensor não detectado**:
-   - Verifique conexões e resistor de pull-up
-   - Teste com código simples de leitura do DS18B20
-
-2. **Controle instável**:
-   - Reduza Kp e Kd
-   - Aumente Ki gradualmente
-   - Verifique isolamento térmico
-
-3. **Interface web não carrega**:
-   - Confirme conexão à rede "ESP32"
-   - Verifique IP no monitor serial
-   - Reinicie o ESP32
-
-### Otimizações Sugeridas
-
-- **Isolamento térmico**: Melhore o isolamento do sistema para maior eficiência
-- **Dissipador**: Use dissipador adequado no lado quente da Peltier
-- **Alimentação**: Fonte estável e adequada para a corrente da Peltier
+Este projeto está sob a licença MIT. Veja o arquivo LICENSE para mais detalhes.
