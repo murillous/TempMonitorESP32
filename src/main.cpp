@@ -6,35 +6,35 @@
 
 // Configuração dos pinos
 #define PINO_DS18B20 4
-#define pinoPeltier 5
+#define pino_peltier 5
 
 // Configurações WiFi
-const char *ssid = "ESP32";
-const char *password = "12345678";
+const char *nome_rede = "ESP32";
+const char *senha_rede = "12345678";
 
 // Configurações de temperatura e controle
-float TEMP_ALVO = 4.0;
-const float DEADBAND = 0.2;              // Banda morta para evitar oscilação
-const float INIT_THRESHOLD = 2.0;        // Threshold para sair do resfriamento inicial
-const float SAMPLE_TIME_SEC = 0.5;       // Tempo de amostragem fixo
-const int PWM_MAX = 255;
-const int PWM_MIN = 0;
+float TEMPERATURA_ALVO = 4.0;
+const float BANDA_MORTA = 0.2;              // Banda morta para evitar oscilação
+const float LIMITE_INICIAL = 2.0;           // Threshold para sair do resfriamento inicial
+const float TEMPO_AMOSTRA_SEG = 0.5;        // Tempo de amostragem fixo
+const int PWM_MAXIMO = 255;
+const int PWM_MINIMO = 0;
 
 // Parâmetros PID
 float kp = 30.0;
 float ki = 0.1;   
 float kd = 10.0;  
-const float I_MAX = 100.0;               // Limite do integrador
-const unsigned long LIMIT_TIMEOUT_MS = 30000; // 30s para detectar setpoint inatingível
+const float INTEGRAL_MAXIMO = 100.0;        // Limite do integrador
+const unsigned long TIMEOUT_LIMITE_MS = 30000; // 30s para detectar setpoint inatingível
 
 // Variáveis do controlador PID
 float integral = 0;
-float lastError = 0;
-float lastTemp = 0;
-unsigned long lastTime = 0;
-unsigned long timeAtMax = 0;
-bool coolingInit = false;
-bool systemLimitReached = false;
+float ultimo_erro = 0;
+float ultima_temperatura = 0;
+unsigned long ultimo_tempo = 0;
+unsigned long tempo_no_maximo = 0;
+bool resfriamento_inicial = false;
+bool limite_sistema_atingido = false;
 
 // Variáveis do sistema
 bool sistema_ligado = false;
@@ -43,12 +43,12 @@ int saida_pwm_atual = 0;
 String status_atual = "DESLIGADO";
 
 // Objetos
-OneWire oneWire(PINO_DS18B20);
-DallasTemperature sensores(&oneWire);
-AsyncWebServer server(80);
+OneWire unWire(PINO_DS18B20);
+DallasTemperature sensores(&unWire);
+AsyncWebServer servidor(80);
 
 // HTML permanece o mesmo
-const char *HTML_PAGE = R"rawliteral(
+const char *PAGINA_HTML = R"rawliteral(
 <!DOCTYPE html>
 <html>
 <head>
@@ -279,7 +279,7 @@ const char *HTML_PAGE = R"rawliteral(
     <div class="container">
         <div class="header">
             <h1>🧊 Controle Peltier</h1>
-            <p>Sistema de Controle de Temperatura - Versão Corrigida</p>
+            <p>Sistema de Controle de Temperatura</p>
         </div>
         
         <div class="dashboard">
@@ -329,34 +329,34 @@ const char *HTML_PAGE = R"rawliteral(
                     <input type="number" id="tempTarget" value="4.0" step="0.1" min="-10" max="50">
                 </div>
                 <div class="control-group">
-                    <button class="btn" onclick="setTarget()">Definir Alvo</button>
-                    <button class="btn danger" onclick="toggleSystem()">Ligar/Desligar</button>
-                    <button class="btn" onclick="resetLimit()">Reset Limite</button>
+                    <button class="btn" onclick="definirAlvo()">Definir Alvo</button>
+                    <button class="btn danger" onclick="alternarSistema()">Ligar/Desligar</button>
+                    <button class="btn" onclick="resetarLimite()">Reset Limite</button>
                 </div>
             </div>
             
             <div class="card">
                 <h3>🔧 Parâmetros PID</h3>
                 <div class="control-group">
-                    <label for="kpValue">Kp (Proporcional):</label>
-                    <input type="number" id="kpValue" value="30.0" step="0.1">
+                    <label for="valorKp">Kp (Proporcional):</label>
+                    <input type="number" id="valorKp" value="30.0" step="0.1">
                 </div>
                 <div class="control-group">
-                    <label for="kiValue">Ki (Integral):</label>
-                    <input type="number" id="kiValue" value="0.1" step="0.1">
+                    <label for="valorKi">Ki (Integral):</label>
+                    <input type="number" id="valorKi" value="0.1" step="0.1">
                 </div>
                 <div class="control-group">
-                    <label for="kdValue">Kd (Derivativo):</label>
-                    <input type="number" id="kdValue" value="10.0" step="0.1">
+                    <label for="valorKd">Kd (Derivativo):</label>
+                    <input type="number" id="valorKd" value="10.0" step="0.1">
                 </div>
-                <button class="btn" onclick="setPID()">Atualizar PID</button>
+                <button class="btn" onclick="definirPID()">Atualizar PID</button>
             </div>
         </div>
     </div>
 
     <script>
-        function updateData() {
-            fetch('/data')
+        function atualizarDados() {
+            fetch('/dados')
                 .then(response => response.json())
                 .then(data => {
                     document.getElementById('tempAtual').textContent = data.temperatura.toFixed(1) + '°C';
@@ -389,29 +389,29 @@ const char *HTML_PAGE = R"rawliteral(
                 .catch(error => console.error('Erro:', error));
         }
         
-        function setTarget() {
-            const target = document.getElementById('tempTarget').value;
-            fetch('/setTarget', {
+        function definirAlvo() {
+            const alvo = document.getElementById('tempTarget').value;
+            fetch('/definirAlvo', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({target: parseFloat(target)})
+                body: JSON.stringify({alvo: parseFloat(alvo)})
             });
         }
         
-        function toggleSystem() {
-            fetch('/toggle', {method: 'POST'});
+        function alternarSistema() {
+            fetch('/alternar', {method: 'POST'});
         }
         
-        function resetLimit() {
-            fetch('/resetLimit', {method: 'POST'});
+        function resetarLimite() {
+            fetch('/resetarLimite', {method: 'POST'});
         }
         
-        function setPID() {
-            const kp = document.getElementById('kpValue').value;
-            const ki = document.getElementById('kiValue').value;
-            const kd = document.getElementById('kdValue').value;
+        function definirPID() {
+            const kp = document.getElementById('valorKp').value;
+            const ki = document.getElementById('valorKi').value;
+            const kd = document.getElementById('valorKd').value;
             
-            fetch('/setPID', {
+            fetch('/definirPID', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
@@ -422,95 +422,95 @@ const char *HTML_PAGE = R"rawliteral(
             });
         }
         
-        setInterval(updateData, 2000);
-        updateData();
+        setInterval(atualizarDados, 2000);
+        atualizarDados();
     </script>
 </body>
 </html>
 )rawliteral";
 
-void resetController() {
+void resetar_controlador() {
     integral = 0;
-    lastError = 0;
-    lastTime = millis();
-    timeAtMax = 0;
-    systemLimitReached = false;
-    coolingInit = false;
+    ultimo_erro = 0;
+    ultimo_tempo = millis();
+    tempo_no_maximo = 0;
+    limite_sistema_atingido = false;
+    resfriamento_inicial = false;
     Serial.println("Controlador resetado");
 }
 
-void initCooling() {
-    coolingInit = true;
+void iniciar_resfriamento() {
+    resfriamento_inicial = true;
     integral = 0;
-    lastError = 0;
+    ultimo_erro = 0;
     Serial.println("Iniciando resfriamento inicial...");
 }
 
-int calculatePID(float currentTemp) {
-    unsigned long now = millis();
-    float dt = (now - lastTime) / 1000.0;
+int calcular_pid(float temperatura_atual) {
+    unsigned long agora = millis();
+    float dt = (agora - ultimo_tempo) / 1000.0;
     
     // Garante sample time mínimo
-    if (dt < SAMPLE_TIME_SEC) {
+    if (dt < TEMPO_AMOSTRA_SEG) {
         return saida_pwm_atual; // Mantém saída anterior
     }
     
-    lastTime = now;
+    ultimo_tempo = agora;
     
     // CORREÇÃO CRÍTICA: erro = temperatura_atual - setpoint
     // Positivo = precisa resfriar, Negativo = não precisa resfriar
-    float error = currentTemp - TEMP_ALVO;
+    float erro = temperatura_atual - TEMPERATURA_ALVO;
     
     // Se não precisa resfriar (temperatura abaixo do setpoint)
-    if (error <= 0) {
+    if (erro <= 0) {
         integral = 0; // Evita windup quando não há necessidade de resfriamento
-        coolingInit = false;
-        systemLimitReached = false;
-        timeAtMax = 0;
+        resfriamento_inicial = false;
+        limite_sistema_atingido = false;
+        tempo_no_maximo = 0;
         status_atual = "SEM RESFRIAMENTO";
         Serial.println("Setpoint atingido - PWM = 0");
         return 0;
     }
     
     // Resfriamento inicial
-    if (coolingInit) {
+    if (resfriamento_inicial) {
         status_atual = "RESFR. INICIAL";
-        if (error <= INIT_THRESHOLD) {
+        if (erro <= LIMITE_INICIAL) {
             // Transição suave para PID
-            coolingInit = false;
+            resfriamento_inicial = false;
             integral = 0; // Bumpless transfer
             Serial.println("Transição para controle PID");
         }
-        return PWM_MAX;
+        return PWM_MAXIMO;
     }
     
     // Controle PID
-    float derivative = 0;
-    if (lastTime > 0) {
-        derivative = (error - lastError) / dt;
+    float derivada = 0;
+    if (ultimo_tempo > 0) {
+        derivada = (erro - ultimo_erro) / dt;
     }
     
-    float proportional = kp * error;
-    float integralTerm = ki * integral;
-    float derivativeTerm = kd * derivative;
+    float proporcional = kp * erro;
+    float termo_integral = ki * integral;
+    float termo_derivativo = kd * derivada;
     
-    float output = proportional + integralTerm + derivativeTerm;
+    float saida = proporcional + termo_integral + termo_derivativo;
     
     // Anti-windup inteligente
-    bool saturatingHigh = (output >= PWM_MAX && error > 0);
-    bool saturatingLow = (output <= 0 && error < 0);
+    bool saturando_alto = (saida >= PWM_MAXIMO && erro > 0);
+    bool saturando_baixo = (saida <= 0 && erro < 0);
     
-    if (!saturatingHigh && !saturatingLow) {
-        integral += error * dt;
-        integral = constrain(integral, -I_MAX, I_MAX);
+    if (!saturando_alto && !saturando_baixo) {
+        integral += erro * dt;
+        integral = constrain(integral, -INTEGRAL_MAXIMO, INTEGRAL_MAXIMO);
     }
     
     // Recalcular com integral atualizada
-    output = proportional + (ki * integral) + derivativeTerm;
-    output = constrain(output, 0, PWM_MAX);
+    saida = proporcional + (ki * integral) + termo_derivativo;
+    saida = constrain(saida, 0, PWM_MAXIMO);
     
     // Deadband para estabilidade
-    if (abs(error) <= DEADBAND) {
+    if (abs(erro) <= BANDA_MORTA) {
         status_atual = "ESTÁVEL (DEADBAND)";
         // Mantém a saída calculada pelo PID, não força zero!
     } else {
@@ -518,122 +518,122 @@ int calculatePID(float currentTemp) {
     }
     
     // Detectar saturação prolongada
-    if (output >= PWM_MAX - 1) {
-        if (timeAtMax == 0) {
-            timeAtMax = now;
-        } else if (now - timeAtMax > LIMIT_TIMEOUT_MS) {
-            systemLimitReached = true;
+    if (saida >= PWM_MAXIMO - 1) {
+        if (tempo_no_maximo == 0) {
+            tempo_no_maximo = agora;
+        } else if (agora - tempo_no_maximo > TIMEOUT_LIMITE_MS) {
+            limite_sistema_atingido = true;
             status_atual = "LIMITE ATINGIDO";
             Serial.println("⚠️ LIMITE DO SISTEMA - Setpoint pode ser inatingível!");
         }
     } else {
-        timeAtMax = 0;
-        if (systemLimitReached && error > INIT_THRESHOLD) {
-            systemLimitReached = false; // Reset se saiu da saturação
+        tempo_no_maximo = 0;
+        if (limite_sistema_atingido && erro > LIMITE_INICIAL) {
+            limite_sistema_atingido = false; // Reset se saiu da saturação
         }
     }
     
-    lastError = error;
+    ultimo_erro = erro;
     
     // Debug PID detalhado
     if (millis() % 5000 < 500) {
-        Serial.println("PID: P=" + String(proportional, 1) + 
-                      " I=" + String(integralTerm, 1) + 
-                      " D=" + String(derivativeTerm, 1) + 
-                      " Err=" + String(error, 2) + 
-                      " Out=" + String(output, 1));
+        Serial.println("PID: P=" + String(proporcional, 1) + 
+                      " I=" + String(termo_integral, 1) + 
+                      " D=" + String(termo_derivativo, 1) + 
+                      " Err=" + String(erro, 2) + 
+                      " Out=" + String(saida, 1));
     }
     
-    return (int)output;
+    return (int)saida;
 }
 
 void setup() {
     Serial.begin(115200);
     sensores.begin();
     
-    pinMode(pinoPeltier, OUTPUT);
+    pinMode(pino_peltier, OUTPUT);
     ledcSetup(0, 1000, 8);
-    ledcAttachPin(pinoPeltier, 0);
+    ledcAttachPin(pino_peltier, 0);
     
-    resetController();
+    resetar_controlador();
     
     // WiFi
-    WiFi.softAP(ssid, password);
+    WiFi.softAP(nome_rede, senha_rede);
     
     // Rotas do servidor
-    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send_P(200, "text/html", HTML_PAGE);
+    servidor.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+        request->send_P(200, "text/html", PAGINA_HTML);
     });
 
-    server.on("/data", HTTP_GET, [](AsyncWebServerRequest *request) {
+    servidor.on("/dados", HTTP_GET, [](AsyncWebServerRequest *request) {
         StaticJsonDocument<300> doc;
         doc["temperatura"] = temperatura_atual;
-        doc["alvo"] = TEMP_ALVO;
-        doc["erro"] = temperatura_atual - TEMP_ALVO;
+        doc["alvo"] = TEMPERATURA_ALVO;
+        doc["erro"] = temperatura_atual - TEMPERATURA_ALVO;
         doc["pwm"] = saida_pwm_atual;
         doc["ligado"] = sistema_ligado;
         doc["status"] = status_atual;
-        doc["limitReached"] = systemLimitReached;
+        doc["limitReached"] = limite_sistema_atingido;
         
-        String response;
-        serializeJson(doc, response);
-        request->send(200, "application/json", response);
+        String resposta;
+        serializeJson(doc, resposta);
+        request->send(200, "application/json", resposta);
     });
 
-    server.on("/setTarget", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+    servidor.on("/definirAlvo", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
               [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
         StaticJsonDocument<100> doc;
         deserializeJson(doc, (const char*)data);
         
-        float newTarget = doc["target"];
+        float novo_alvo = doc["alvo"];
         
         // Bumpless transfer ao mudar setpoint
         if (sistema_ligado) {
-            float currentError = temperatura_atual - TEMP_ALVO;
-            float newError = temperatura_atual - newTarget;
+            float erro_atual = temperatura_atual - TEMPERATURA_ALVO;
+            float novo_erro = temperatura_atual - novo_alvo;
             
             // Se mudou de precisar resfriar para não precisar, ou vice-versa
-            if ((currentError > 0) != (newError > 0)) {
-                resetController();
+            if ((erro_atual > 0) != (novo_erro > 0)) {
+                resetar_controlador();
             }
             
             // Se o novo setpoint requer resfriamento inicial
-            if (newError > INIT_THRESHOLD) {
-                initCooling();
+            if (novo_erro > LIMITE_INICIAL) {
+                iniciar_resfriamento();
             }
         }
         
-        TEMP_ALVO = newTarget;
+        TEMPERATURA_ALVO = novo_alvo;
         
-        Serial.println("Nova temperatura alvo: " + String(TEMP_ALVO) + "°C");
+        Serial.println("Nova temperatura alvo: " + String(TEMPERATURA_ALVO) + "°C");
         request->send(200, "text/plain", "OK");
     });
 
-    server.on("/toggle", HTTP_POST, [](AsyncWebServerRequest *request) {
+    servidor.on("/alternar", HTTP_POST, [](AsyncWebServerRequest *request) {
         sistema_ligado = !sistema_ligado;
         if (!sistema_ligado) {
             ledcWrite(0, 0);
             saida_pwm_atual = 0;
             status_atual = "DESLIGADO";
         } else {
-            resetController();
-            float error = temperatura_atual - TEMP_ALVO;
-            if (error > INIT_THRESHOLD) {
-                initCooling();
+            resetar_controlador();
+            float erro = temperatura_atual - TEMPERATURA_ALVO;
+            if (erro > LIMITE_INICIAL) {
+                iniciar_resfriamento();
             }
         }
         Serial.println("Sistema " + String(sistema_ligado ? "LIGADO" : "DESLIGADO"));
         request->send(200, "text/plain", "OK");
     });
 
-    server.on("/resetLimit", HTTP_POST, [](AsyncWebServerRequest *request) {
-        systemLimitReached = false;
-        timeAtMax = 0;
+    servidor.on("/resetarLimite", HTTP_POST, [](AsyncWebServerRequest *request) {
+        limite_sistema_atingido = false;
+        tempo_no_maximo = 0;
         Serial.println("Limite resetado pelo usuário");
         request->send(200, "text/plain", "OK");
     });
 
-    server.on("/setPID", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+    servidor.on("/definirPID", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
               [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
         StaticJsonDocument<100> doc;
         deserializeJson(doc, (const char*)data);
@@ -645,21 +645,21 @@ void setup() {
         request->send(200, "text/plain", "OK");
     });
 
-    server.begin();
+    servidor.begin();
     Serial.println("=== Sistema de Controle Peltier Iniciado ===");
     Serial.println("Versão com correções técnicas implementadas");
     Serial.println("Acesse: http://" + WiFi.softAPIP().toString());
 }
 
 void loop() {
-    unsigned long now = millis();
-    static unsigned long lastSample = 0;
+    unsigned long agora = millis();
+    static unsigned long ultima_amostra = 0;
     
     // Sample time rigoroso
-    if (now - lastSample < (SAMPLE_TIME_SEC * 1000)) {
+    if (agora - ultima_amostra < (TEMPO_AMOSTRA_SEG * 1000)) {
         return;
     }
-    lastSample = now;
+    ultima_amostra = agora;
     
     // Ler temperatura
     sensores.requestTemperatures();
@@ -675,32 +675,32 @@ void loop() {
     }
     
     // Filtro simples de temperatura (média móvel)
-    static float tempBuffer[3] = {0};
-    tempBuffer[0] = tempBuffer[1];
-    tempBuffer[1] = tempBuffer[2];
-    tempBuffer[2] = temperatura_atual;
-    temperatura_atual = (tempBuffer[0] + tempBuffer[1] + tempBuffer[2]) / 3.0;
+    static float buffer_temperatura[3] = {0};
+    buffer_temperatura[0] = buffer_temperatura[1];
+    buffer_temperatura[1] = buffer_temperatura[2];
+    buffer_temperatura[2] = temperatura_atual;
+    temperatura_atual = (buffer_temperatura[0] + buffer_temperatura[1] + buffer_temperatura[2]) / 3.0;
     
-    int pwmOutput = 0;
+    int saida_pwm = 0;
     
     if (sistema_ligado) {
-        pwmOutput = calculatePID(temperatura_atual);
+        saida_pwm = calcular_pid(temperatura_atual);
     } else {
         status_atual = "DESLIGADO";
     }
     
-    saida_pwm_atual = pwmOutput;
-    ledcWrite(0, pwmOutput);
+    saida_pwm_atual = saida_pwm;
+    ledcWrite(0, saida_pwm);
     
     // Log detalhado
     Serial.print("Temp: ");
     Serial.print(temperatura_atual, 2);
     Serial.print("°C | Alvo: ");
-    Serial.print(TEMP_ALVO, 1);
+    Serial.print(TEMPERATURA_ALVO, 1);
     Serial.print("°C | Erro: ");
-    Serial.print(temperatura_atual - TEMP_ALVO, 2);
+    Serial.print(temperatura_atual - TEMPERATURA_ALVO, 2);
     Serial.print("°C | PWM: ");
-    Serial.print(pwmOutput);
+    Serial.print(saida_pwm);
     Serial.print(" | Status: ");
     Serial.println(status_atual);
 }
